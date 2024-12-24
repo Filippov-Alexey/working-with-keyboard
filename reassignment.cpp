@@ -146,12 +146,6 @@ void ParseKeyCodeFile(const std::string& fileName) {
     file.close();
 }
 
-
-bool IsModifierPressed() {
-    return GetAsyncKeyState(VK_CONTROL) & 0x8000 ||
-        GetAsyncKeyState(VK_SHIFT) & 0x8000 ||
-        GetAsyncKeyState(VK_MENU) & 0x8000;
-}
 void PressKeyCombination(const std::vector<int>& keyCodes) {
     for (int keyCode : keyCodes) {
         INPUT inputDown = { 0 };
