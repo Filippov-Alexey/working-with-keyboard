@@ -1,4 +1,4 @@
-﻿#include <windows.h>
+#include <windows.h>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -53,7 +53,7 @@ void LoadKeyCodes(const std::string& fileName) {
                     size_t start = line.find("0x") + 2;
                     std::stringstream ss(line.substr(start));
                     ss >> std::hex >> value;
-
+                     
 
                     keyDictionary[key] = value;
                 }
