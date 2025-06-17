@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <algorithm>
 #include <vector>
+#pragma comment(lib, "user32.lib")
 
 HHOOK keyboardHook;
 std::map<int, std::string> keyDictionary;
@@ -21,7 +22,7 @@ struct KeyInfo {
 std::vector<KeyInfo> keyInfoList;
 
 LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
-    if (nCode >= 0) { // Проверка на корректность nCode
+    if (nCode >= 0) {
         KBDLLHOOKSTRUCT* keyboard = (KBDLLHOOKSTRUCT*)lParam;
         int vkCode = keyboard->vkCode;
 
@@ -33,13 +34,10 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
 
         std::string keyName = keyDictionary.count(vkCode) ? keyDictionary[vkCode] : "Unknown";
         std::string status = isBlocked ? "Blocked" : "Not blocked";
-
-        // Вывод данных в формате JSON
         std::cout << "{\"key_code\": \"0x" << std::uppercase << hexStream.str()
             << "\", \"key_name\": \"" << keyName << "\", \"status\": \"" << status << "\", \"event\": \""
             << (isKeyDown ? "keydown" : (wParam == WM_KEYUP ? "keyup" : "unknown")) << "\"}" << std::endl;
 
-        // Блокировка только событий WM_KEYDOWN, которые помечены как заблокированные.
         return isBlocked && isKeyDown ? 1 : CallNextHookEx(keyboardHook, nCode, wParam, lParam);
     }
     return CallNextHookEx(keyboardHook, nCode, wParam, lParam);
@@ -57,7 +55,7 @@ void ParseKeyCodeFile(const std::string& fileName) {
         line.erase(remove(line.begin(), line.end(), ' '), line.end());
         size_t pos = line.find(':');
         if (pos != std::string::npos) {
-            std::string keyName = line.substr(1, pos - 2); // Извлечение названия клавиши, обработка кавычек
+            std::string keyName = line.substr(1, pos - 2);
             std::string hexCode = line.substr(pos + 1);
             try {
                 int keyCode = std::stoi(hexCode, nullptr, 16);
@@ -74,9 +72,9 @@ void ParseKeyCodeFile(const std::string& fileName) {
 void ParseArguments(int argc, char* argv[]) {
     for (int i = 1; i < argc; ++i) {
         std::string keyName = argv[i];
-        for (const auto& pair : keyDictionary) { // Правильный синтаксис для итерации по элементам
-            int keyCode = pair.first; // Клавиша
-            std::string name = pair.second; // Название
+        for (const auto& pair : keyDictionary) {
+            int keyCode = pair.first;
+            std::string name = pair.second; 
             if (name == keyName) {
                 keysToBlock[keyCode] = true;
                 break;

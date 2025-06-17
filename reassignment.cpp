@@ -6,6 +6,7 @@
 #include <string>
 #include <algorithm>
 #include <vector>
+#pragma comment(lib, "user32.lib")
 
 HHOOK keyboardHook;
 std::map<std::string, int> keyDictionary;
@@ -79,18 +80,15 @@ void ParseArguments(int argc, char* argv[]) {
 
         std::cout << "Processing hotkey \"" << hotKey << "\" and mapping it to key name \"" << newKeyName << "\"." << std::endl;
 
-        // ��������� �� ����������
         std::vector<std::string> hotKeyComponents = SplitString(hotKey, '+');
         std::vector<int> newKeyCodes;
 
-        // ��������� ������������ �����������
         if (!AreAllKeysValid(hotKeyComponents)) {
             exit(1);
         }
 
-        // �������� ���� ����� ������ 
         for (const auto& component : SplitString(newKeyName, '+')) {
-            int keyCode = keyDictionary[component]; // ������������, ��� ���� ����������
+            int keyCode = keyDictionary[component]; 
             if (keyCode > 0) {
                 newKeyCodes.push_back(keyCode);
             }
@@ -100,7 +98,7 @@ void ParseArguments(int argc, char* argv[]) {
             }
         }
 
-        hotKeys[hotKey] = newKeyCodes; // ��������� ������� ������� � ���� �������
+        hotKeys[hotKey] = newKeyCodes; 
 
         std::cout << "Mapping hotkey: " << hotKey << " to new key codes: ";
         for (const int& code : newKeyCodes) {
@@ -171,7 +169,6 @@ void PressKey(int keyCode) {
 
     SendInput(1, &inputDown, sizeof(INPUT));
     std::cout << "Pressed key: " << keyCode << std::endl;
-
     INPUT inputUp = { 0 };
     inputUp.type = INPUT_KEYBOARD;
     inputUp.ki.wVk = keyCode;
@@ -194,13 +191,13 @@ LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
 
             auto it = hotKeys.find(currentHotKey);
             if (it != hotKeys.end()) {
-                const std::vector<int>& newKeyCodes = it->second; // �������� ����� ���� ������
+                const std::vector<int>& newKeyCodes = it->second;
 
                 std::cout << "Hotkey matched: " << currentHotKey << std::endl;
 
-                PressKeyCombination(newKeyCodes); // �������� ������� ���������� ������
+                PressKeyCombination(newKeyCodes); 
 
-                return 1; // ��������� ����������� ��������� �������
+                return 1; 
             }
         }
     }
