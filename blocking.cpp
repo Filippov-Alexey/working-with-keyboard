@@ -7,38 +7,31 @@
 #include <iomanip>
 #include <algorithm>
 #include <vector>
-#pragma comment(lib, "user32.lib")
 
 HHOOK keyboardHook;
 std::map<int, std::string> keyDictionary;
 std::map<int, bool> keysToBlock;
 
-struct KeyInfo {
-    int key_code;
-    std::string key_name;
-    std::string status;
-};
-
-std::vector<KeyInfo> keyInfoList;
-
 LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
     if (nCode >= 0) {
-        KBDLLHOOKSTRUCT* keyboard = (KBDLLHOOKSTRUCT*)lParam;
+        KBDLLHOOKSTRUCT* keyboard = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
         int vkCode = keyboard->vkCode;
 
         std::stringstream hexStream;
-        hexStream << std::hex << vkCode;
+        hexStream << std::hex << std::uppercase << vkCode;
 
         bool isKeyDown = (wParam == WM_KEYDOWN);
-        bool isBlocked = keysToBlock.count(vkCode) && keysToBlock[vkCode];
+        bool isBlocked = keysToBlock[vkCode];
 
         std::string keyName = keyDictionary.count(vkCode) ? keyDictionary[vkCode] : "Unknown";
         std::string status = isBlocked ? "Blocked" : "Not blocked";
-        std::cout << "{\"key_code\": \"0x" << std::uppercase << hexStream.str()
-            << "\", \"key_name\": \"" << keyName << "\", \"status\": \"" << status << "\", \"event\": \""
-            << (isKeyDown ? "keydown" : (wParam == WM_KEYUP ? "keyup" : "unknown")) << "\"}" << std::endl;
 
-        return isBlocked && isKeyDown ? 1 : CallNextHookEx(keyboardHook, nCode, wParam, lParam);
+        std::cout << "{\"key_code\": \"0x" << hexStream.str()
+                  << "\", \"key_name\": \"" << keyName 
+                  << "\", \"status\": \"" << status 
+                  << "\", \"event\": \"" << (isKeyDown ? "keydown" : "keyup") << "\"}" << std::endl;
+
+        return (isBlocked && isKeyDown) ? 1 : CallNextHookEx(keyboardHook, nCode, wParam, lParam);
     }
     return CallNextHookEx(keyboardHook, nCode, wParam, lParam);
 }
@@ -52,31 +45,27 @@ void ParseKeyCodeFile(const std::string& fileName) {
 
     std::string line;
     while (std::getline(file, line)) {
-        line.erase(remove(line.begin(), line.end(), ' '), line.end());
+        line.erase(remove_if(line.begin(), line.end(), isspace), line.end());
         size_t pos = line.find(':');
         if (pos != std::string::npos) {
-            std::string keyName = line.substr(1, pos - 2);
+            std::string keyName = line.substr(1, pos - 2); 
             std::string hexCode = line.substr(pos + 1);
             try {
                 int keyCode = std::stoi(hexCode, nullptr, 16);
                 keyDictionary[keyCode] = keyName;
-            }
-            catch (const std::invalid_argument& e) {
+            } catch (const std::invalid_argument&) {
                 std::cerr << "Error parsing key code: " << hexCode << std::endl;
             }
         }
     }
-    file.close();
 }
 
 void ParseArguments(int argc, char* argv[]) {
     for (int i = 1; i < argc; ++i) {
         std::string keyName = argv[i];
         for (const auto& pair : keyDictionary) {
-            int keyCode = pair.first;
-            std::string name = pair.second; 
-            if (name == keyName) {
-                keysToBlock[keyCode] = true;
+            if (pair.second == keyName) {
+                keysToBlock[pair.first] = true;
                 break;
             }
         }

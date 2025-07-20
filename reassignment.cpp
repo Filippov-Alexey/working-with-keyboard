@@ -6,7 +6,6 @@
 #include <string>
 #include <algorithm>
 #include <vector>
-#pragma comment(lib, "user32.lib")
 
 HHOOK keyboardHook;
 std::map<std::string, int> keyDictionary;
@@ -44,7 +43,9 @@ std::string GetHotkeyString(int vkCode) {
     if (GetAsyncKeyState(VK_MENU) & 0x8000) {
         hotKeyStr += "alt+";
     }
-
+    if (GetAsyncKeyState(VK_LWIN) & 0x8000 || GetAsyncKeyState(VK_RWIN) & 0x8000) {
+        hotKeyStr += "win+";
+    }
     for (const auto& entry : keyDictionary) {
         if (entry.second == vkCode) {
             hotKeyStr += entry.first;
@@ -73,40 +74,29 @@ void ParseArguments(int argc, char* argv[]) {
     }
 
     std::cout << "Starting to parse arguments..." << std::endl;
-
     for (int i = 1; i < argc; i += 2) {
         std::string hotKey = ToLower(argv[i]);
         std::string newKeyName = ToLower(argv[i + 1]);
 
         std::cout << "Processing hotkey \"" << hotKey << "\" and mapping it to key name \"" << newKeyName << "\"." << std::endl;
 
-        std::vector<std::string> hotKeyComponents = SplitString(hotKey, '+');
         std::vector<int> newKeyCodes;
-
-        if (!AreAllKeysValid(hotKeyComponents)) {
-            exit(1);
-        }
-
         for (const auto& component : SplitString(newKeyName, '+')) {
-            int keyCode = keyDictionary[component]; 
-            if (keyCode > 0) {
-                newKeyCodes.push_back(keyCode);
-            }
-            else {
+            auto it = keyDictionary.find(component);
+            if (it != keyDictionary.end()) {
+                newKeyCodes.push_back(it->second);
+            } else {
                 std::cerr << "Error: Invalid key component \"" << component << "\"." << std::endl;
                 exit(1);
             }
         }
-
-        hotKeys[hotKey] = newKeyCodes; 
-
+        hotKeys.emplace(std::move(hotKey), std::move(newKeyCodes)); // Используем emplace
         std::cout << "Mapping hotkey: " << hotKey << " to new key codes: ";
-        for (const int& code : newKeyCodes) {
+        for (const auto& code : hotKeys[hotKey]) {
             std::cout << code << " ";
         }
         std::cout << std::endl;
     }
-
     std::cout << "Argument parsing completed." << std::endl;
 }
 
@@ -118,32 +108,22 @@ void ParseKeyCodeFile(const std::string& fileName) {
     }
 
     std::string line;
-    int value;
-
-
     while (std::getline(file, line)) {
-        std::istringstream iss(line);
+        if (line.empty() || line.find('\'') == std::string::npos) continue; 
 
-
-        if (line.find('\'') != std::string::npos) {
-            size_t start = line.find('\'') + 1;
-            size_t end = line.find('\'', start);
-            std::string key = line.substr(start, end - start);
-
-            if (line.find("0x") != std::string::npos) {
-                size_t start = line.find("0x") + 2;
-                std::stringstream ss(line.substr(start));
-                ss >> std::hex >> value;
-
-
-                keyDictionary[key] = value;
-            }
+        size_t start = line.find('\'') + 1;
+        size_t end = line.find('\'', start);
+        std::string key = line.substr(start, end - start);
+        
+        if (line.find("0x") != std::string::npos) {
+            size_t hexStart = line.find("0x") + 2;
+            int value;
+            std::stringstream ss(line.substr(hexStart));
+            ss >> std::hex >> value;
+            keyDictionary.emplace(std::move(key), value); 
         }
     }
-
-    file.close();
 }
-
 void PressKeyCombination(const std::vector<int>& keyCodes) {
     for (int keyCode : keyCodes) {
         INPUT inputDown = { 0 };
@@ -169,6 +149,7 @@ void PressKey(int keyCode) {
 
     SendInput(1, &inputDown, sizeof(INPUT));
     std::cout << "Pressed key: " << keyCode << std::endl;
+
     INPUT inputUp = { 0 };
     inputUp.type = INPUT_KEYBOARD;
     inputUp.ki.wVk = keyCode;
@@ -179,26 +160,18 @@ void PressKey(int keyCode) {
 }
 
 LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
-    if (nCode == HC_ACTION) {
-        KBDLLHOOKSTRUCT* keyboard = (KBDLLHOOKSTRUCT*)lParam;
+    if (nCode == HC_ACTION && wParam == WM_KEYDOWN) {
+        KBDLLHOOKSTRUCT* keyboard = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
+        int vkCode = keyboard->vkCode;
+        std::cout << "Key pressed: " << vkCode << std::endl;
 
-        if (wParam == WM_KEYDOWN) {
-            int vkCode = keyboard->vkCode;
-            std::cout << "Key pressed: " << vkCode << std::endl;
+        std::string currentHotKey = GetHotkeyString(vkCode);
+        std::cout << "Constructed hotkey: " << currentHotKey << std::endl;
 
-            std::string currentHotKey = GetHotkeyString(vkCode);
-            std::cout << "Constructed hotkey: " << currentHotKey << std::endl;
-
-            auto it = hotKeys.find(currentHotKey);
-            if (it != hotKeys.end()) {
-                const std::vector<int>& newKeyCodes = it->second;
-
-                std::cout << "Hotkey matched: " << currentHotKey << std::endl;
-
-                PressKeyCombination(newKeyCodes); 
-
-                return 1; 
-            }
+        auto it = hotKeys.find(currentHotKey);
+        if (it != hotKeys.end()) {
+            PressKeyCombination(it->second);
+            return 1; // Блокируем событие, если нашли горячую клавишу
         }
     }
     return CallNextHookEx(NULL, nCode, wParam, lParam);
