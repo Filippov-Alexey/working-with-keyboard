@@ -1,3 +1,6 @@
+
+#include <thread>
+#include <chrono>
 #include <vector>
 #include <windows.h>
 #include <iostream>
@@ -52,7 +55,7 @@ void SeparateModifiersAndNonModifiers(const std::string& keyname, const std::uno
         std::string keyName = keyDictionary.count(key) ? keyDictionary.at(key) : "";
         
         if (!keyName.empty()) {
-            if ((keyName.front() != '=') && (keyName.front() != '+') && (keyName.front() != '-')) {
+            if ((keyName.front() != '=') && (keyName.front() != '_') && (keyName.front() != '-')) {
                 nonModifiers.insert(key);
             } else {
                 modifiers.insert(key);
@@ -72,30 +75,31 @@ void SeparateModifiersAndNonModifiers(const std::string& keyname, const std::uno
     vk.insert(vk.end(), modifiers.begin(), modifiers.end());
     vk.insert(vk.end(), nonModifiers.begin(), nonModifiers.end());
 }
-
-void TrimOptions(std::vector<std::string>& options, size_t maxSize) {
-    if (options.size() >= maxSize) {
-        options.erase(options.begin(), options.begin() + maxSize - 1);
-    }
+void TrimOptions(std::vector<std::string>& options, const std::string& keyName) {
+    options.erase(
+        std::remove_if(options.begin(), options.end(),
+                       [&keyName](const std::string& s) { return s.find(keyName) == std::string::npos; }),
+        options.end()
+    );
 }
 
-void AddOptions(const std::vector<std::string>& modifiers, const std::string& keyName, std::vector<std::string>& options, size_t maxSize) {
+void AddOptions(const std::vector<std::string>& modifiers, const std::string& keyName, std::vector<std::string>& options) {
     for (const auto& modifier : modifiers) {
         options.push_back(modifier + "+" + keyName);
     }
-    TrimOptions(options, maxSize);
+    TrimOptions(options, keyName);
 }
 
-void AddComplexOptions(const std::vector<std::string>& firstModifier, const std::vector<std::string>& secondModifier, const std::string& keyName, std::vector<std::string>& options, size_t maxSize) {
+void AddComplexOptions(const std::vector<std::string>& firstModifier, const std::vector<std::string>& secondModifier, const std::string& keyName, std::vector<std::string>& options) {
     for (const auto& first : firstModifier) {
         for (const auto& second : secondModifier) {
             options.push_back(first + "+" + second + "+" + keyName);
         }
     }
-    TrimOptions(options, maxSize);
+    TrimOptions(options, keyName);
 }
 
-void AddComplexOptions1(const std::vector<std::string>& firstModifier, const std::vector<std::string>& secondModifier, const std::vector<std::string>& thirdModifier, const std::string& keyName, std::vector<std::string>& options, size_t maxSize) {
+void AddComplexOptions1(const std::vector<std::string>& firstModifier, const std::vector<std::string>& secondModifier, const std::vector<std::string>& thirdModifier, const std::string& keyName, std::vector<std::string>& options) {
     for (const auto& first : firstModifier) {
         for (const auto& second : secondModifier) {
             for (const auto& third : thirdModifier) {
@@ -103,7 +107,14 @@ void AddComplexOptions1(const std::vector<std::string>& firstModifier, const std
             }
         }
     }
-    TrimOptions(options, maxSize);
+    TrimOptions(options, keyName);
+}
+template<typename ContainerType>
+void replace_all(ContainerType& container, typename ContainerType::value_type old_val, typename ContainerType::value_type new_val) {
+    for(auto it = container.begin(); it != container.end(); ++it) {
+        if(*it == old_val)
+            *it = new_val;
+    }
 }
 
 void ProcessKeyName(std::string& keyName,
@@ -120,33 +131,41 @@ void ProcessKeyName(std::string& keyName,
 
     SeparateModifiersAndNonModifiers(keyName, vk_key, vk, modifiers, nonModifiers);
 
+    const int left_alt = 0x12;
+    const int alt = 0xa4;
+    const int right_alt = 0xa5;
+    if(std::find(vk.begin(), vk.end(), left_alt) != vk.end() &&
+       std::find(vk.begin(), vk.end(), right_alt) != vk.end()) {
+        replace_all(vk, left_alt, alt);
+    }
     for (int key : vk) {
         std::string keyName = keyDictionary.count(key) ? keyDictionary.at(key) : "";
         
         if (!keyName.empty()) {
             ProcessKeyModifier(keyName, '=', pressShift);
-            ProcessKeyModifier(keyName, '+', pressCtrl);
+            ProcessKeyModifier(keyName, '_', pressCtrl);
             ProcessKeyModifier(keyName, '-', pressAlt);
-
+            
             bool hasShift = !pressShift.empty();
             bool hasCtrl = !pressCtrl.empty();
             bool hasAlt = !pressAlt.empty();
-
+            
             if (hasShift && !hasCtrl && !hasAlt) {
-                AddOptions(pressShift, keyName, options, 4);
+                AddOptions(pressShift, keyName, options);
             } else if (!hasShift && hasCtrl && !hasAlt) {
-                AddOptions(pressCtrl, keyName, options, 4);
+                AddOptions(pressCtrl, keyName, options);
             } else if (!hasShift && !hasCtrl && hasAlt) {
-                AddOptions(pressAlt, keyName, options, 4);
+                AddOptions(pressAlt, keyName, options);
             } else if (hasShift && hasCtrl && !hasAlt) {
-                AddComplexOptions(pressShift, pressCtrl, keyName, options, 10);
+                AddComplexOptions(pressShift, pressCtrl, keyName, options);
             } else if (hasShift && !hasCtrl && hasAlt) {
-                AddComplexOptions(pressShift, pressAlt, keyName, options, 10);
+                AddComplexOptions(pressShift, pressAlt, keyName, options);
             } else if (!hasShift && hasCtrl && hasAlt) {
-                AddComplexOptions(pressCtrl, pressAlt, keyName, options, 10);
+                AddComplexOptions(pressCtrl, pressAlt, keyName, options);
             } else if (hasShift && hasCtrl && hasAlt) {
-                AddComplexOptions1(pressShift, pressCtrl, pressAlt, keyName, options, 22);
+                AddComplexOptions1(pressShift, pressCtrl, pressAlt, keyName, options);
             } else {
+                if (pressedKeys!=keyName)
                 options.push_back(keyName);
             }
         }
@@ -156,11 +175,11 @@ void PrintKeyInfo(const std::string& hexCode, const std::string& keyName,
                   const std::string& pressedKeys, 
                   const std::string& status, 
                   const std::vector<std::string>& options,
-                  const bool& isBlocked ) {
+                  const std::string& block, const std::string& isInjected) {
 
     std::string optionsStr;
     for (const auto& option : options) {
-        optionsStr += option + ", ";
+        optionsStr += "\""+option+"\"" + ", ";
     }
 
     if (!optionsStr.empty()) {
@@ -172,8 +191,9 @@ void PrintKeyInfo(const std::string& hexCode, const std::string& keyName,
               << "\"key_name\": \"" << keyName << "\", "
               << "\"status\": \"" << status << "\", "
               << "\"pressed_keys\": \"" << pressedKeys << "\", "
-              << "\"option\": \"" << optionsStr << "\", "
-              << "\"blocked\": \"" << (isBlocked ? "true" : "false") << "\"}" 
+              << "\"option\": [" << optionsStr << "], "
+              << "\"blocked\": \"" << block << "\", "
+              << "\"isInjected\": \""<< isInjected<<"\"}" 
               << std::endl;
 }
 
@@ -201,34 +221,44 @@ void HandleKeyPress(int vkCode) {
     }
 }
 
-void ProcessOptions(std::vector<std::string>& options,const std::string& pressedKeys) {
-    if (options.size() >= 1) {
-        if (!pressedKeys.empty())options.push_back(pressedKeys);
-        bool containsPlus = false;
-        for (const std::string& option : options) {
-            if (option.find('+') != std::string::npos) {
-                containsPlus = true;
-                break;
-            }
-        }
-
-        if (!containsPlus) {
-            std::string combined;
-            for (const std::string& option : options) {
-                combined = option + "+" + combined;
-            }
-            combined.erase(combined.size() - 1);
-            options.clear();
-            options.push_back(combined);
-        }
+void ProcessOptions(std::vector<std::string>& options, const std::string& pressedKeys) {
+    if (!pressedKeys.empty()) {
+        options.push_back(pressedKeys);
     }
+    if (options.empty()) return;
+
+    auto itHasPlus = std::find_if(options.begin(), options.end(),
+                                  [](const std::string& s){ return s.find('+') != std::string::npos; });
+
+    if (itHasPlus != options.end()) {
+        std::vector<std::string> filtered;
+        for (const auto& s : options) {
+            if (s.find('+') != std::string::npos) filtered.push_back(s);
+        }
+        options.swap(filtered);
+        return;
+    }
+
+    std::sort(options.begin(), options.end()); 
+    std::vector<std::string> permutations;
+    do {
+        std::string combined;
+        for (size_t i = 0; i < options.size(); ++i) {
+            if (i > 0) combined += "+";
+            combined += options[i];
+        }
+        permutations.push_back(std::move(combined));
+    } while (std::next_permutation(options.begin(), options.end()));
+
+    options.swap(permutations);
 }
-
-
 LRESULT CALLBACK KeyboardHookCallback(int nCode, WPARAM wParam, LPARAM lParam) {
+
     if (nCode != HC_ACTION) return CallNextHookEx(nullptr, nCode, wParam, lParam);
+    KBDLLHOOKSTRUCT* pKeyStruct = (KBDLLHOOKSTRUCT*)lParam;
     KBDLLHOOKSTRUCT* ks = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
     if (!ks) return CallNextHookEx(nullptr, nCode, wParam, lParam);
+    bool isInjected = pKeyStruct->flags & LLKHF_INJECTED;
 
     const int vk = static_cast<int>(ks->vkCode);
     const bool isKeyDown = (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN);
@@ -243,7 +273,7 @@ LRESULT CALLBACK KeyboardHookCallback(int nCode, WPARAM wParam, LPARAM lParam) {
     auto it = keyDictionary.find(vk);
     std::string keyName = (it != keyDictionary.end()) ? it->second : std::string();
     ProcessKeyModifier(keyName, '=', pressShift);
-    ProcessKeyModifier(keyName, '+', pressCtrl);
+    ProcessKeyModifier(keyName, '_', pressCtrl);
     ProcessKeyModifier(keyName, '-', pressAlt);
 
 
@@ -274,9 +304,9 @@ LRESULT CALLBACK KeyboardHookCallback(int nCode, WPARAM wParam, LPARAM lParam) {
 
     isBlocked = !pressedKeys.empty();
 
-    PrintKeyInfo(VKCodeToHex(vk), keyName, pressedKeys, (isKeyDown ? "Down" : (isKeyUp ? "Up" : "None")), options, isBlocked);
+    PrintKeyInfo(VKCodeToHex(vk), keyName, pressedKeys, (isKeyDown ? "Down" : (isKeyUp ? "Up" : "None")), options, (isBlocked?"Blocked":"No blocked"), (isInjected?"Programm":"Physical"));
 
-    if (isBlocked) return 1;
+    if (isBlocked&&!isInjected) return 1;
     return CallNextHookEx(nullptr, nCode, wParam, lParam);
 }
 void GeneratePermutations(const std::vector<std::string>& keys, std::vector<std::string>& results, int start) {
@@ -346,10 +376,10 @@ void ParseKeyCodeFile(const std::string& fileName) {
     }
     file.close();
 }
-
 int main(int argc, char* argv[]) {
-    ParseKeyCodeFile("key_code.txt");
     ParseArguments(argc, argv);
+    ParseKeyCodeFile("key_code.txt");
+
     keyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, KeyboardHookCallback, NULL, 0);
     if (!keyboardHook) {
         std::cerr << "Failed to install hook!" << std::endl;
